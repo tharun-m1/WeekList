@@ -62,7 +62,12 @@ app.post("/create-weeklist", isLoggedIn, async (req, res) => {
       taskInfo.createdTime = new Date();
 
       taskListofUser.find({ userId }).then(async (weeklists) => {
-        if (weeklists.length < 2) {
+        const activeLists = weeklists.filter(
+          (list) => list.taskInfo.isCompleted === false
+        );
+        console.log("activeLists: ", activeLists);
+        if (activeLists.length < 2) {
+          // console.log("activeLists: ", activeLists);
           await taskListofUser.create({ userId, taskInfo });
           res.json({
             staus: "Success",
