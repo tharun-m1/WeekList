@@ -9,7 +9,7 @@ dotenv.config();
 
 const app = express();
 
-app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 // Schema
 const User = mongoose.model("User", {
@@ -20,14 +20,26 @@ const User = mongoose.model("User", {
   gender: String,
   mobile: String,
 });
-
+// Schema
+const taskListofUser = mongoose.model("taskListofUser", {
+  userId: String,
+  taskInfo: {
+    weekListNo: Number,
+    isCompleted: Boolean,
+    createdTime: Date,
+    descriptions: [{ task: String, isCompleted: Boolean }],
+  },
+});
+// middleware
 const isLoggedIn = (req, res, next) => {
   try {
-    const { jwToken } = req.headers;
+    const jwToken = req.headers.authorization;
+    // console.log("JWToken: ", jwToken);
     const user = jwt.verify(jwToken, process.env.SECRET_KEY);
     req.user = user;
     next();
   } catch (error) {
+    // console.log(error);
     res.json({
       Status: "Failed",
       message: "You are not LoggedIn",
@@ -35,14 +47,61 @@ const isLoggedIn = (req, res, next) => {
   }
 };
 
+// create weekList
+app.post("/create-weeklist", isLoggedIn, async (req, res) => {
+  try {
+    const { userId, taskInfo } = req.body;
+    const user = await User.findOne({ _id: userId });
+
+    if (user === null) {
+      res.json({
+        status: "Failed",
+        message: "User doesn't exist",
+      });
+    } else {
+      taskInfo.createdTime = new Date();
+
+      taskListofUser.find({ userId }).then(async (weeklists) => {
+        if (weeklists.length < 2) {
+          await taskListofUser.create({ userId, taskInfo });
+          res.json({
+            staus: "Success",
+            message: "weekList added successfully.",
+          });
+        } else {
+          res.json({
+            status: "Failed",
+            message: "limit Exceeded.",
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({
+      status: "Failed",
+      message: "Something went wrong",
+    });
+  }
+});
+
 // health
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
   const time = new Date().toLocaleString();
-  res.json({
-    serverName: "weekList",
-    currentTime: time,
-    status: "active",
-  });
+  try {
+    await User.find({});
+    res.json({
+      serverName: "weekList",
+      currentTime: time,
+      status: "active",
+    });
+  } catch (error) {
+    res.json({
+      serverName: "weekList",
+      currentTime: time,
+      status: "Inactive",
+    });
+  }
 });
 
 // home
@@ -64,7 +123,18 @@ app.get("/users", async (req, res) => {
     console.log(error);
   }
 });
-
+// for tasks collection
+app.get("/taskdb", isLoggedIn, async (req, res) => {
+  try {
+    const tasklist = await taskListofUser.find({});
+    res.json({
+      status: "Success!",
+      data: tasklist,
+    });
+  } catch (error) {
+    console.log(error);
+  }
+});
 // signup
 app.post("/signup", async (req, res) => {
   try {
@@ -101,7 +171,7 @@ app.post("/login", async (req, res) => {
       let passwordMatched = await bcrypt.compare(password, user.password);
       if (passwordMatched) {
         const jwToken = jwt.sign(user.toJSON(), process.env.SECRET_KEY, {
-          expiresIn: 30,
+          expiresIn: 60 * 60,
         });
         res.json({
           status: "Success!",
